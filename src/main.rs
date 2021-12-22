@@ -235,19 +235,6 @@ fn main() {
         ];
     }
 
-    let mut scene = SceneParams {
-        target_zoom: 5.0,
-        zoom: 5.0,
-        target_scroll: vector(70.0, 70.0),
-        scroll: vector(70.0, 70.0),
-        show_points: false,
-        stroke_width: 1.0,
-        target_stroke_width: 1.0,
-        draw_background: false,
-        render: false,
-        image: true,
-    };
-
     // create an instance
     let instance = wgpu::Instance::new(wgpu::Backends::all());
 
@@ -504,12 +491,6 @@ fn main() {
 
     let mut depth_texture_view = None;
 
-    let start = Instant::now();
-    let mut next_report = start + Duration::from_secs(1);
-    let mut frame_count: u32 = 0;
-    let mut time_secs: f32 = 0.0;
-
-
     surface_desc.width = DEFAULT_WINDOW_WIDTH as u32;
     surface_desc.height = DEFAULT_WINDOW_HEIGHT as u32;
 
@@ -546,21 +527,6 @@ fn main() {
             label: Some("Encoder"),
         });
 
-        cpu_primitives[stroke_prim_id as usize].width = scene.stroke_width;
-        cpu_primitives[stroke_prim_id as usize].color = [
-            (time_secs * 0.8 - 1.6).sin() * 0.1 + 0.1,
-            (time_secs * 0.5 - 1.6).sin() * 0.1 + 0.1,
-            (time_secs - 1.6).sin() * 0.1 + 0.1,
-            1.0,
-        ];
-
-        for idx in 2..(num_instances + 1) {
-            cpu_primitives[idx as usize].translate = [
-                (time_secs * 0.05 * idx as f32).sin() * (100.0 + idx as f32 * 10.0),
-                (time_secs * 0.1 * idx as f32).sin() * (100.0 + idx as f32 * 10.0),
-            ];
-        }
-
         let mut arrow_count = 0;
 
         queue.write_buffer(
@@ -571,8 +537,8 @@ fn main() {
                     DEFAULT_WINDOW_WIDTH,
                     DEFAULT_WINDOW_HEIGHT,
                 ],
-                zoom: scene.zoom,
-                scroll_offset: scene.scroll.to_array(),
+                zoom: 1.0,
+                scroll_offset: [0.0, 0.0],
                 _pad: 0.0,
             }]),
         );
@@ -636,14 +602,13 @@ fn main() {
             pass.draw_indexed(stroke_range.clone(), 0, 0..1);
             pass.draw_indexed(arrow_range.clone(), 0, 0..(arrow_count as u32));
 
-            if scene.draw_background {
-                pass.set_pipeline(&bg_pipeline);
-                pass.set_bind_group(0, &bind_group, &[]);
-                pass.set_index_buffer(bg_ibo.slice(..), wgpu::IndexFormat::Uint16);
-                pass.set_vertex_buffer(0, bg_vbo.slice(..));
+            // Draw background
+            pass.set_pipeline(&bg_pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_index_buffer(bg_ibo.slice(..), wgpu::IndexFormat::Uint16);
+            pass.set_vertex_buffer(0, bg_vbo.slice(..));
+            pass.draw_indexed(0..6, 0, 0..1);
 
-                pass.draw_indexed(0..6, 0, 0..1);
-            }
         }
 
         let u32_size = std::mem::size_of::<u32>() as u32;
@@ -723,19 +688,6 @@ impl FillVertexConstructor<BgPoint> for Custom {
             point: vertex.position().to_array(),
         }
     }
-}
-
-struct SceneParams {
-    target_zoom: f32,
-    zoom: f32,
-    target_scroll: Vector,
-    scroll: Vector,
-    show_points: bool,
-    stroke_width: f32,
-    target_stroke_width: f32,
-    draw_background: bool,
-    render: bool,
-    image: bool,
 }
 
 struct BufferDimensions {

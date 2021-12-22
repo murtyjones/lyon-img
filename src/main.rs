@@ -244,7 +244,6 @@ fn main() {
         stroke_width: 1.0,
         target_stroke_width: 1.0,
         draw_background: false,
-        size_changed: true,
         render: false,
         image: true,
     };
@@ -511,38 +510,36 @@ fn main() {
     let mut time_secs: f32 = 0.0;
 
 
-        if scene.size_changed {
-            scene.size_changed = false;
-            surface_desc.width = DEFAULT_WINDOW_WIDTH as u32;
-            surface_desc.height = DEFAULT_WINDOW_HEIGHT as u32;
+    surface_desc.width = DEFAULT_WINDOW_WIDTH as u32;
+    surface_desc.height = DEFAULT_WINDOW_HEIGHT as u32;
 
-            let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Depth texture"),
-                size: wgpu::Extent3d {
-                    width: surface_desc.width,
-                    height: surface_desc.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
+    let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Depth texture"),
+        size: wgpu::Extent3d {
+            width: surface_desc.width,
+            height: surface_desc.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Bgra8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+    });
+
+    depth_texture_view =
+        Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
+
+    multisampled_render_target = if sample_count > 1 {
+        Some(create_multisampled_framebuffer(
+                &device,
+                &surface_desc,
                 sample_count,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8Unorm,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            });
+        ))
+    } else {
+        None
+    };
 
-            depth_texture_view =
-                Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
-
-            multisampled_render_target = if sample_count > 1 {
-                Some(create_multisampled_framebuffer(
-                    &device,
-                    &surface_desc,
-                    sample_count,
-                ))
-            } else {
-                None
-            };
-        }
 
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -737,7 +734,6 @@ struct SceneParams {
     stroke_width: f32,
     target_stroke_width: f32,
     draw_background: bool,
-    size_changed: bool,
     render: bool,
     image: bool,
 }

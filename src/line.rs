@@ -8,8 +8,8 @@ use lyon::tessellation::{FillOptions, FillTessellator};
 use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 use std::io::Write;
 
-mod rust_logo;
-use rust_logo::build_logo_path;
+mod build_line;
+use build_line::*;
 
 use lyon::algorithms::walk;
 
@@ -137,7 +137,7 @@ fn main() {
 
     // Build a Path for the rust logo.
     let mut builder = Path::builder().with_svg();
-    build_logo_path(&mut builder);
+    build_line(&mut builder);
     let path = builder.build();
 
     fill_tess
@@ -471,7 +471,7 @@ fn main() {
             color_attachments: &[wgpu::RenderPassColorAttachment {
                 view: &texture_view,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                     store: true,
                 },
                 resolve_target: None,
@@ -621,7 +621,7 @@ async fn write_to_disk<'a, 'b>(
         let padded_buffer = buffer_slice.get_mapped_range();
 
         let mut png_encoder = png::Encoder::new(
-            std::fs::File::create(format!("image.png")).unwrap(),
+            std::fs::File::create(format!("img/line.png")).unwrap(),
             buffer_dimensions.width as u32,
             buffer_dimensions.height as u32,
         );

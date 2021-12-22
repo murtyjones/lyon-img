@@ -11,8 +11,6 @@ use std::io::Write;
 mod build_line;
 use build_line::*;
 
-use lyon::algorithms::walk;
-
 // For create_buffer_init()
 use wgpu::util::DeviceExt;
 
@@ -38,7 +36,7 @@ unsafe impl bytemuck::Pod for Globals {}
 unsafe impl bytemuck::Zeroable for Globals {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct GpuVertex {
     position: [f32; 2],
     normal: [f32; 2],
@@ -87,31 +85,6 @@ unsafe impl bytemuck::Zeroable for BgPoint {}
 const DEFAULT_WINDOW_WIDTH: f32 = 612.0;
 const DEFAULT_WINDOW_HEIGHT: f32 = 792.0;
 
-/// Creates a texture that uses MSAA and fits a given swap chain
-fn create_multisampled_framebuffer(
-    device: &wgpu::Device,
-    desc: &wgpu::SurfaceConfiguration,
-    sample_count: u32,
-) -> wgpu::TextureView {
-    let multisampled_frame_descriptor = &wgpu::TextureDescriptor {
-        label: Some("Multisampled frame descriptor"),
-        size: wgpu::Extent3d {
-            width: desc.width,
-            height: desc.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count,
-        dimension: wgpu::TextureDimension::D2,
-        format: desc.format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-    };
-
-    device
-        .create_texture(multisampled_frame_descriptor)
-        .create_view(&wgpu::TextureViewDescriptor::default())
-}
-
 fn main() {
     println!("== wgpu example ==");
     println!("Controls:");
@@ -139,6 +112,8 @@ fn main() {
     let mut builder = Path::builder().with_svg();
     build_line(&mut builder);
     let path = builder.build();
+    // M 122.0 69.0 L 122.0 70.0 Z
+    //  M 122.0 69.0 L 122.0 71.0 Z
 
     fill_tess
         .tessellate_path(

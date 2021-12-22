@@ -404,13 +404,11 @@ fn main() {
         fragment: Some(wgpu::FragmentState {
             module: &fs_module,
             entry_point: "main",
-            targets: &[
-                wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                },
-            ],
+            targets: &[wgpu::ColorTargetState {
+                format: wgpu::TextureFormat::Bgra8Unorm,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            }],
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -431,10 +429,6 @@ fn main() {
 
     let render_pipeline = device.create_render_pipeline(&render_pipeline_descriptor);
 
-    // TODO: this isn't what we want: we'd need the equivalent of VK_POLYGON_MODE_LINE,
-    // but it doesn't seem to be exposed by wgpu?
-    render_pipeline_descriptor.primitive.topology = wgpu::PrimitiveTopology::LineList;
-
     let bg_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: None,
         layout: Some(&pipeline_layout),
@@ -454,13 +448,11 @@ fn main() {
         fragment: Some(wgpu::FragmentState {
             module: &bg_fs_module,
             entry_point: "main",
-            targets: &[
-                wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                },
-            ],
+            targets: &[wgpu::ColorTargetState {
+                format: wgpu::TextureFormat::Bgra8Unorm,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            }],
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -487,10 +479,6 @@ fn main() {
         present_mode: wgpu::PresentMode::Mailbox,
     };
 
-    let mut multisampled_render_target = None;
-
-    let mut depth_texture_view = None;
-
     surface_desc.width = DEFAULT_WINDOW_WIDTH as u32;
     surface_desc.height = DEFAULT_WINDOW_HEIGHT as u32;
 
@@ -508,152 +496,140 @@ fn main() {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
     });
 
-    depth_texture_view =
-        Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
-
-    multisampled_render_target = if sample_count > 1 {
+    let multisampled_render_target = if sample_count > 1 {
         Some(create_multisampled_framebuffer(
-                &device,
-                &surface_desc,
-                sample_count,
+            &device,
+            &surface_desc,
+            sample_count,
         ))
     } else {
         None
     };
 
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("Encoder"),
+    });
 
+    queue.write_buffer(
+        &globals_ubo,
+        0,
+        bytemuck::cast_slice(&[Globals {
+            resolution: [DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT],
+            zoom: 1.0,
+            scroll_offset: [0.0, 0.0],
+            _pad: 0.0,
+        }]),
+    );
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Encoder"),
-        });
+    queue.write_buffer(&prims_ubo, 0, bytemuck::cast_slice(&cpu_primitives));
 
-        let mut arrow_count = 0;
+    let texture_desc = wgpu::TextureDescriptor {
+        size: wgpu::Extent3d {
+            width: DEFAULT_WINDOW_WIDTH as u32,
+            height: DEFAULT_WINDOW_HEIGHT as u32,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
+        label: None,
+    };
 
-        queue.write_buffer(
-            &globals_ubo,
-            0,
-            bytemuck::cast_slice(&[Globals {
-                resolution: [
-                    DEFAULT_WINDOW_WIDTH,
-                    DEFAULT_WINDOW_HEIGHT,
-                ],
-                zoom: 1.0,
-                scroll_offset: [0.0, 0.0],
-                _pad: 0.0,
-            }]),
-        );
+    let texture = device.create_texture(&texture_desc);
+    let texture_view = texture.create_view(&Default::default());
 
-        queue.write_buffer(&prims_ubo, 0, bytemuck::cast_slice(&cpu_primitives));
-
-        let texture_size = 256u32;
-
-        let texture_desc = wgpu::TextureDescriptor {
-            size: wgpu::Extent3d {
-                width: DEFAULT_WINDOW_WIDTH as u32,
-                height: DEFAULT_WINDOW_HEIGHT as u32,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
-            label: None,
+    {
+        // A resolve target is only supported if the attachment actually uses anti-aliasing
+        // So if sample_count == 1 then we must render directly to the surface's buffer
+        let color_attachment = if let Some(msaa_target) = &multisampled_render_target {
+            wgpu::RenderPassColorAttachment {
+                view: msaa_target,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: true,
+                },
+                resolve_target: Some(&texture_view),
+            }
+        } else {
+            wgpu::RenderPassColorAttachment {
+                view: &texture_view,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: true,
+                },
+                resolve_target: None,
+            }
         };
 
-        let texture = device.create_texture(&texture_desc);
-        let texture_view = texture.create_view(&Default::default());
-
-        {
-            // A resolve target is only supported if the attachment actually uses anti-aliasing
-            // So if sample_count == 1 then we must render directly to the surface's buffer
-            let color_attachment = if let Some(msaa_target) = &multisampled_render_target {
-                wgpu::RenderPassColorAttachment {
-                    view: msaa_target,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: true,
-                    },
-                    resolve_target: Some(&texture_view),
-                }
-            } else {
-                wgpu::RenderPassColorAttachment {
-                    view: &texture_view,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: true,
-                    },
-                    resolve_target: None,
-                }
-            };
-
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[color_attachment],
-                depth_stencil_attachment: None,
-            });
-
-            pass.set_pipeline(&render_pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            pass.set_index_buffer(ibo.slice(..), wgpu::IndexFormat::Uint16);
-            pass.set_vertex_buffer(0, vbo.slice(..));
-
-            pass.draw_indexed(fill_range.clone(), 0, 0..(num_instances as u32));
-            pass.draw_indexed(stroke_range.clone(), 0, 0..1);
-            pass.draw_indexed(arrow_range.clone(), 0, 0..(arrow_count as u32));
-
-            // Draw background
-            pass.set_pipeline(&bg_pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            pass.set_index_buffer(bg_ibo.slice(..), wgpu::IndexFormat::Uint16);
-            pass.set_vertex_buffer(0, bg_vbo.slice(..));
-            pass.draw_indexed(0..6, 0, 0..1);
-
-        }
-
-        let u32_size = std::mem::size_of::<u32>() as u32;
-
-        // It is a WebGPU requirement that ImageCopyBuffer.layout.bytes_per_row %
-        // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT == 0 So we calculate padded_bytes_per_row
-        // by rounding unpadded_bytes_per_row up to the next multiple of
-        // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT. https://en.wikipedia.org/wiki/Data_structure_alignment#Computing_padding
-        let buffer_dimensions = BufferDimensions::new(DEFAULT_WINDOW_WIDTH as usize, DEFAULT_WINDOW_HEIGHT as usize);
-
-        // The output buffer lets us retrieve the data as an array
-        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
-            size: (buffer_dimensions.padded_bytes_per_row * buffer_dimensions.height) as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+            color_attachments: &[color_attachment],
+            depth_stencil_attachment: None,
         });
-    
-        encoder.copy_texture_to_buffer(
-            wgpu::ImageCopyTexture {
-                aspect: wgpu::TextureAspect::All,
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            wgpu::ImageCopyBuffer {
-                buffer: &output_buffer,
-                layout: wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: std::num::NonZeroU32::new(
-                        buffer_dimensions.padded_bytes_per_row as u32,
-                    )
-                    .unwrap()
-                    .into(),
-                    rows_per_image: Some(
-                        NonZeroU32::new(DEFAULT_WINDOW_HEIGHT as u32).expect("oops must have been zero"),
-                    ),
-                },
-            },
-            texture_desc.size,
-        );
 
-        queue.submit(Some(encoder.finish()));
+        pass.set_pipeline(&render_pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.set_index_buffer(ibo.slice(..), wgpu::IndexFormat::Uint16);
+        pass.set_vertex_buffer(0, vbo.slice(..));
 
-        block_on(write_to_disk(device, buffer_dimensions, output_buffer)).unwrap();
+        pass.draw_indexed(fill_range.clone(), 0, 0..(num_instances as u32));
+        pass.draw_indexed(stroke_range.clone(), 0, 0..1);
+
+        // Draw background
+        pass.set_pipeline(&bg_pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.set_index_buffer(bg_ibo.slice(..), wgpu::IndexFormat::Uint16);
+        pass.set_vertex_buffer(0, bg_vbo.slice(..));
+        pass.draw_indexed(0..6, 0, 0..1);
+    }
+
+    // It is a WebGPU requirement that ImageCopyBuffer.layout.bytes_per_row %
+    // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT == 0 So we calculate padded_bytes_per_row
+    // by rounding unpadded_bytes_per_row up to the next multiple of
+    // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT. https://en.wikipedia.org/wiki/Data_structure_alignment#Computing_padding
+    let buffer_dimensions = BufferDimensions::new(
+        DEFAULT_WINDOW_WIDTH as usize,
+        DEFAULT_WINDOW_HEIGHT as usize,
+    );
+
+    // The output buffer lets us retrieve the data as an array
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: (buffer_dimensions.padded_bytes_per_row * buffer_dimensions.height) as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    encoder.copy_texture_to_buffer(
+        wgpu::ImageCopyTexture {
+            aspect: wgpu::TextureAspect::All,
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+        },
+        wgpu::ImageCopyBuffer {
+            buffer: &output_buffer,
+            layout: wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(
+                    buffer_dimensions.padded_bytes_per_row as u32,
+                )
+                .unwrap()
+                .into(),
+                rows_per_image: Some(
+                    NonZeroU32::new(DEFAULT_WINDOW_HEIGHT as u32)
+                        .expect("oops must have been zero"),
+                ),
+            },
+        },
+        texture_desc.size,
+    );
+
+    queue.submit(Some(encoder.finish()));
+
+    block_on(write_to_disk(device, buffer_dimensions, output_buffer)).unwrap();
 }
 
 /// This vertex constructor forwards the positions and normals provided by the
@@ -691,75 +667,75 @@ impl FillVertexConstructor<BgPoint> for Custom {
 }
 
 struct BufferDimensions {
-	width: usize,
-	height: usize,
-	unpadded_bytes_per_row: usize,
-	padded_bytes_per_row: usize,
+    width: usize,
+    height: usize,
+    unpadded_bytes_per_row: usize,
+    padded_bytes_per_row: usize,
 }
 
 impl BufferDimensions {
-	fn new(width: usize, height: usize) -> Self {
-		let bytes_per_pixel = std::mem::size_of::<u32>();
-		let unpadded_bytes_per_row = width * bytes_per_pixel;
-		let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize;
-		let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-		let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
-		Self {
-			width,
-			height,
-			unpadded_bytes_per_row,
-			padded_bytes_per_row,
-		}
-	}
+    fn new(width: usize, height: usize) -> Self {
+        let bytes_per_pixel = std::mem::size_of::<u32>();
+        let unpadded_bytes_per_row = width * bytes_per_pixel;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize;
+        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
+        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
+        Self {
+            width,
+            height,
+            unpadded_bytes_per_row,
+            padded_bytes_per_row,
+        }
+    }
 }
 
 async fn write_to_disk<'a, 'b>(
-	device: wgpu::Device,
-	buffer_dimensions: BufferDimensions,
-	output_buffer: wgpu::Buffer,
+    device: wgpu::Device,
+    buffer_dimensions: BufferDimensions,
+    output_buffer: wgpu::Buffer,
 ) -> Result<(), ()> {
-	// Note that we're not calling `.await` here.
-	let buffer_slice = output_buffer.slice(..);
-	let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
-	// Poll the device in a blocking manner so that our future resolves.
-	// In an actual application, `device.poll(...)` should
-	// be called in an event loop or on another thread.
-	device.poll(wgpu::Maintain::Wait);
-	// If a file system is available, write the buffer as a PNG
-	let has_file_system_available = cfg!(not(target_arch = "wasm32"));
-	if !has_file_system_available {
-		return Ok(());
-	}
+    // Note that we're not calling `.await` here.
+    let buffer_slice = output_buffer.slice(..);
+    let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
+    // Poll the device in a blocking manner so that our future resolves.
+    // In an actual application, `device.poll(...)` should
+    // be called in an event loop or on another thread.
+    device.poll(wgpu::Maintain::Wait);
+    // If a file system is available, write the buffer as a PNG
+    let has_file_system_available = cfg!(not(target_arch = "wasm32"));
+    if !has_file_system_available {
+        return Ok(());
+    }
 
-	if let Ok(()) = buffer_future.await {
-		let padded_buffer = buffer_slice.get_mapped_range();
+    if let Ok(()) = buffer_future.await {
+        let padded_buffer = buffer_slice.get_mapped_range();
 
-		let mut png_encoder = png::Encoder::new(
-			std::fs::File::create(format!("image.png")).unwrap(),
-			buffer_dimensions.width as u32,
-			buffer_dimensions.height as u32,
-		);
-		png_encoder.set_depth(png::BitDepth::Eight);
-		png_encoder.set_color(png::ColorType::RGBA);
-		let mut png_writer = png_encoder
-			.write_header()
-			.unwrap()
-			.into_stream_writer_with_size(buffer_dimensions.unpadded_bytes_per_row);
+        let mut png_encoder = png::Encoder::new(
+            std::fs::File::create(format!("image.png")).unwrap(),
+            buffer_dimensions.width as u32,
+            buffer_dimensions.height as u32,
+        );
+        png_encoder.set_depth(png::BitDepth::Eight);
+        png_encoder.set_color(png::ColorType::RGBA);
+        let mut png_writer = png_encoder
+            .write_header()
+            .unwrap()
+            .into_stream_writer_with_size(buffer_dimensions.unpadded_bytes_per_row);
 
-		// from the padded_buffer we write just the unpadded bytes into the image
-		for chunk in padded_buffer.chunks(buffer_dimensions.padded_bytes_per_row) {
-			png_writer
-				.write_all(&chunk[..buffer_dimensions.unpadded_bytes_per_row])
-				.unwrap();
-		}
-		png_writer.finish().unwrap();
+        // from the padded_buffer we write just the unpadded bytes into the image
+        for chunk in padded_buffer.chunks(buffer_dimensions.padded_bytes_per_row) {
+            png_writer
+                .write_all(&chunk[..buffer_dimensions.unpadded_bytes_per_row])
+                .unwrap();
+        }
+        png_writer.finish().unwrap();
 
-		// With the current interface, we have to make sure all mapped views are
-		// dropped before we unmap the buffer.
-		drop(padded_buffer);
+        // With the current interface, we have to make sure all mapped views are
+        // dropped before we unmap the buffer.
+        drop(padded_buffer);
 
-		output_buffer.unmap();
-	}
+        output_buffer.unmap();
+    }
 
-	Ok(())
+    Ok(())
 }

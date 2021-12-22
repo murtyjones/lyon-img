@@ -129,7 +129,6 @@ fn main() {
 
     let stroke_prim_id = 0;
     let fill_prim_id = 1;
-    let arrows_prim_id = num_instances + 1;
 
     let mut geometry: VertexBuffers<GpuVertex, u16> = VertexBuffers::new();
 

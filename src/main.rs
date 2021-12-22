@@ -444,20 +444,6 @@ fn main() {
     surface_desc.width = DEFAULT_WINDOW_WIDTH as u32;
     surface_desc.height = DEFAULT_WINDOW_HEIGHT as u32;
 
-    let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("Depth texture"),
-        size: wgpu::Extent3d {
-            width: surface_desc.width,
-            height: surface_desc.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Bgra8Unorm,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-    });
-
     let multisampled_render_target = if sample_count > 1 {
         Some(create_multisampled_framebuffer(
             &device,

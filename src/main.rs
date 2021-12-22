@@ -196,21 +196,6 @@ fn main() {
         z_index: num_instances as i32 + 1,
         ..Primitive::DEFAULT
     };
-    // Instance primitives
-    for (idx, cpu_prim) in cpu_primitives
-        .iter_mut()
-        .enumerate()
-        .skip(fill_prim_id + 1)
-        .take(num_instances as usize - 1)
-    {
-        cpu_prim.z_index = (idx as u32 + 1) as i32;
-        cpu_prim.color = [
-            (0.1 * idx as f32).rem(1.0),
-            (0.5 * idx as f32).rem(1.0),
-            (0.9 * idx as f32).rem(1.0),
-            1.0,
-        ];
-    }
 
     // create an instance
     let instance = wgpu::Instance::new(wgpu::Backends::all());

@@ -608,7 +608,7 @@ fn main() {
                 wgpu::RenderPassColorAttachment {
                     view: msaa_target,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: true,
                     },
                     resolve_target: Some(&texture_view),
@@ -617,7 +617,7 @@ fn main() {
                 wgpu::RenderPassColorAttachment {
                     view: &texture_view,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: true,
                     },
                     resolve_target: None,

@@ -141,18 +141,6 @@ fn main() {
     build_logo_path(&mut builder);
     let path = builder.build();
 
-    // Build a Path for the arrow.
-    let mut builder = Path::builder();
-    builder.begin(point(-1.0, -0.3));
-    builder.line_to(point(0.0, -0.3));
-    builder.line_to(point(0.0, -1.0));
-    builder.line_to(point(1.5, 0.0));
-    builder.line_to(point(0.0, 1.0));
-    builder.line_to(point(0.0, 0.3));
-    builder.line_to(point(-1.0, 0.3));
-    builder.close();
-    let arrow_path = builder.build();
-
     fill_tess
         .tessellate_path(
             &path,
@@ -172,16 +160,6 @@ fn main() {
         .unwrap();
 
     let stroke_range = fill_range.end..(geometry.indices.len() as u32);
-
-    fill_tess
-        .tessellate_path(
-            &arrow_path,
-            &FillOptions::tolerance(tolerance),
-            &mut BuffersBuilder::new(&mut geometry, WithId(arrows_prim_id as u32)),
-        )
-        .unwrap();
-
-    let arrow_range = stroke_range.end..(geometry.indices.len() as u32);
 
     let mut bg_geometry: VertexBuffers<BgPoint, u16> = VertexBuffers::new();
 

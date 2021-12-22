@@ -122,7 +122,7 @@ fn main() {
 
     // Number of samples for anti-aliasing
     // Set to 1 to disable
-    let sample_count = 4;
+    let sample_count = 1;
 
     let num_instances: u32 = 32;
     let tolerance = 0.02;
@@ -322,20 +322,7 @@ fn main() {
         label: None,
     });
 
-    let depth_stencil_state = Some(wgpu::DepthStencilState {
-        format: wgpu::TextureFormat::Bgra8Unorm,
-        depth_write_enabled: true,
-        depth_compare: wgpu::CompareFunction::Greater,
-        stencil: wgpu::StencilState {
-            front: wgpu::StencilFaceState::IGNORE,
-            back: wgpu::StencilFaceState::IGNORE,
-            read_mask: 0,
-            write_mask: 0,
-        },
-        bias: wgpu::DepthBiasState::default(),
-    });
-
-    let mut render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
+    let render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
         label: None,
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
@@ -444,16 +431,6 @@ fn main() {
     surface_desc.width = DEFAULT_WINDOW_WIDTH as u32;
     surface_desc.height = DEFAULT_WINDOW_HEIGHT as u32;
 
-    let multisampled_render_target = if sample_count > 1 {
-        Some(create_multisampled_framebuffer(
-            &device,
-            &surface_desc,
-            sample_count,
-        ))
-    } else {
-        None
-    };
-
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("Encoder"),
     });
@@ -480,7 +457,7 @@ fn main() {
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        format: wgpu::TextureFormat::Bgra8Unorm,
         usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
         label: None,
     };
@@ -489,31 +466,16 @@ fn main() {
     let texture_view = texture.create_view(&Default::default());
 
     {
-        // A resolve target is only supported if the attachment actually uses anti-aliasing
-        // So if sample_count == 1 then we must render directly to the surface's buffer
-        let color_attachment = if let Some(msaa_target) = &multisampled_render_target {
-            wgpu::RenderPassColorAttachment {
-                view: msaa_target,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: true,
-                },
-                resolve_target: Some(&texture_view),
-            }
-        } else {
-            wgpu::RenderPassColorAttachment {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[wgpu::RenderPassColorAttachment {
                 view: &texture_view,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: true,
                 },
                 resolve_target: None,
-            }
-        };
-
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            color_attachments: &[color_attachment],
+            }],
             depth_stencil_attachment: None,
         });
 
